@@ -12,13 +12,17 @@ module.exports = {
     output: {
         path: path.resolve('./dist'),
         filename: 'index.js',
-        clean: true,
     },
     module: {
         rules: [
             {
                 test: /\.(png|jpe?g|gif|woff|svg|eot|ttf)$/i,
-                use: [{ loader: 'file-loader' }],
+                use: [{
+                    loader: 'file-loader',
+                    options: {
+                        name: '[name].[ext]',
+                    }
+                }],
             },
             {
                 test: /\.css$/i,

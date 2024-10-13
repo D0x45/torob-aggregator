@@ -4,6 +4,19 @@ import {
     type Error,
 } from './types';
 
+export function getProductIDFromURL(url: string): string {
+    // https://torob.com/p/896f7b67-aa8f-4510-aafa-e21d7d178124/%DA%AF%D9
+    const { pathname } = new URL(url);
+
+    if (false === pathname.startsWith('/p/'))
+        throw 'Invalid Torob product url!';
+
+    return pathname.slice(
+        3, // skip the /p/
+        pathname.indexOf('/', 3)
+    );
+}
+
 export async function getProductSellers(
     product_id: string,
     search_id: string = '',
