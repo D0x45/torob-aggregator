@@ -1,6 +1,7 @@
 import {
     type ProductSellersResult,
     type SearchResults,
+    type ProductDetails,
     type Error,
 } from './types';
 
@@ -41,4 +42,14 @@ export async function getSearchResults(query: string): Promise<SearchResults> {
         throw (data as Error).error.message;
 
     return (data as SearchResults);
+}
+
+export async function getProductsDetails(prk: string): Promise<ProductDetails> {
+    const resp = await fetch(`https://api.torob.com/v4/base-product/details-log-click/?source=next_desktop&discover_method=browse&_bt__experiment=&prk=${prk}&is_adv=&rank=1&search_id=6711268458a8723560b1f4d1&suid=6711268458a8723560b1f4d1&max_seller_count=30&deliver_city=&_url_referrer=`);
+    const data: ProductDetails | Error = await resp.json();
+
+    if (resp.status !== 200)
+        throw (data as Error).error.message;
+
+    return (data as ProductDetails);
 }
