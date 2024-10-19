@@ -31,29 +31,43 @@ function App() {
     const [inProgress, setInProgress] = useState(false);
     const [productsData, setProductsData] = useState<ProductsData>({});
 
-    const intersectingShopIDs = useMemo(() => {
+    const commonSellers = useMemo(() => {
         let first_run = true;
-        let shop_ids: number[] = [];
+        let shop_ids: string[] = [];
+        let shop_infos: Record<string, SellerInfo> = {};
 
         for (const product_id in productsData) {
             const product_data = productsData[product_id];
-            const product_shop_ids = product_data.sellers.map(s => s.shop_id);
+            const product_shop_map = Object.fromEntries(
+                product_data.sellers.map(s => [s.shop_id.toString(), s])
+            );
+
+            // reset it
+            shop_infos = {};
 
             if (first_run) {
                 first_run = false;
-                shop_ids = product_shop_ids;
-                // shop_names = product_data.sellers.map(s => s.shop_name);
+                shop_ids = Object.keys(product_shop_map);
+                shop_infos = product_shop_map;
             } else {
                 // intersect the seller ids
-                shop_ids = product_shop_ids.filter(
-                    i => shop_ids.includes(i)
+                shop_ids = Object.keys(product_shop_map).filter(
+                    shop_id => {
+                        const t = shop_ids.includes(shop_id);
+
+                        if (t) {
+                            shop_infos[shop_id] = product_shop_map[shop_id];
+                        }
+
+                        return t;
+                    }
                 );
                 console.log('intersect length=', shop_ids.length);
             }
         }
 
-        return shop_ids;
-    }, [productsData]);
+        return { shop_ids, shop_infos };
+    }, [ productsData ]);
 
     const _doTheThing = async (target: HTMLInputElement) => {
         const productId = getProductIDFromURL(target.value);
@@ -100,16 +114,16 @@ function App() {
         GenericRecordTable(
             Object.entries(productsData).map(v => {
                 return {
-                    'Image': h('img', {
+                    'image': h('img', {
                         src: v[1].info.image_url,
-                        class: 'h-32 w-32'
+                        class: 'h-24 w-24'
                     }),
                     // 'ID': v[0],
-                    'Title': v[1].info.name2 || v[1].info.name1,
-                    'Min Price':  v[1].info.min_price.toLocaleString('en-us'),
-                    'Max Price':  v[1].info.max_price.toLocaleString('en-us'),
-                    'Sellers': v[1].sellers.length,
-                    'Actions': h('button', {
+                    'product': v[1].info.name2 || v[1].info.name1,
+                    'min. price':  v[1].info.min_price.toLocaleString(),
+                    'max. price':  v[1].info.max_price.toLocaleString(),
+                    'sellers': v[1].sellers.length,
+                    'actions': h('button', {
                         class: 'text-lg font-lg text-center bg-red-500 text-white py-3 px-3 border rounded-lg',
                         type: 'button',
                         onclick: () => {
@@ -123,16 +137,77 @@ function App() {
         ),
 
         TabContainer(
-            intersectingShopIDs.map(id => {
-                // TODO: gather all the products provided by this seller
-                // and list them here with packaging price and all
+            commonSellers.shop_ids.filter(shop_id => {
+                return (commonSellers.shop_infos[shop_id].availability);
+            }).sort((shop_id_a, shop_id_b) => {
+                const shop_a = commonSellers.shop_infos[shop_id_a],
+                      shop_b = commonSellers.shop_infos[shop_id_b];
+
+                return shop_b.score_info.score - shop_a.score_info.score;
+            }).map(shop_id => {
+                const shop_name = commonSellers.shop_infos[shop_id].shop_name;
+                const shop_score = commonSellers.shop_infos[shop_id].score_info.score_text;
+
+                let contents = [];
+                let total_price = 0;
+                let badge_css = 'bg-red-500';
+
+                if (commonSellers.shop_infos[shop_id].score_info.score >= 3)
+                    badge_css = 'bg-yellow-400';
+
+                if (commonSellers.shop_infos[shop_id].score_info.score >= 4.5)
+                    badge_css = 'bg-green-500';
+
+                lp1: for (const product_id in productsData) {
+                    const product_data = productsData[product_id];
+
+                    lp0: for (const product_seller of product_data.sellers) {
+                        if (shop_id != product_seller.shop_id.toString()) continue;
+                        contents.push({
+                            'product': productsData[product_id].info.name2 || product_seller.name1,
+                            'price': product_seller.price_text,
+                            'free shipping': product_seller.more_info?.free_shipping || '-',
+                            // 'heavy items': product_seller.more_info?.heavy_items || '-',
+                            // 'payment on delivery': product_seller.more_info?.payment_on_delivery || '-',
+                            // 'same day delivery': product_seller.more_info?.same_day_delivery || '-',
+                            'same day free shipping': product_seller.more_info?.same_day_free_shipping || '-',
+                            'actions': h('button',{
+                                type: 'button',
+                                class: 'text-sm font-sm text-center bg-green-500 text-white py-1 px-2 border rounded-sm',
+                                onClick: () => window.open(product_seller.page_url)
+                            }, 'View'),
+                        });
+
+                        // if product is unavailable,
+                        // make the total price zero and return
+                        if (product_seller.price == 0) {
+                            total_price = 0;
+                            break lp1;
+                        }
+
+                        total_price += product_seller.price;
+                        break lp0;
+                    }
+                }
+
+                contents.push({
+                    a: 'TOTAL',
+                    b: total_price.toLocaleString(),
+                });
+
                 return {
-                    tp: { text: `${id}`, badge: '!', badge_css: 'bg-red-500' },
-                    body: h(
+                    __total_price: total_price,
+                    tp: { text: `${shop_name}`, badge: `${shop_score}`, badge_css },
+                    body: (total_price === 0) ? undefined : h(
                         'span', { class: 'px-2 py-2' },
-                        `${id}`
+                        GenericRecordTable(contents)
                     )
                 };
+            }).filter((v) => {
+                // unavailable products make the total zero
+                return (v.__total_price !== 0);
+            }).sort((tp_a, tp_b) => {
+                return tp_a.__total_price - tp_b.__total_price;
             })
         )
     );
